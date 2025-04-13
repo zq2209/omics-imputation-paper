@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Zining Qi" />
+
+
+<title>Compare QTL performance on different methods for simulated omics data</title>
+
+<script src="site_libs/header-attrs-2.29/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/readable.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/textmate.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+
+<link rel="icon" href="https://github.com/workflowr/workflowr-assets/raw/main/img/reproducible.png">
+<!-- Add a small amount of space between sections. -->
+<style type="text/css">
+div.section {
+  padding-top: 12px;
+}
+</style>
+
+
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Missing Data Imputation for Multi-Omics Data</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Overview</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        <li>
+  <a href="https://github.com/zq2209/omics-imputation-paper">source</a>
+</li>
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Compare QTL performance on different
+methods for simulated omics data</h1>
+<h4 class="author">Zining Qi</h4>
+
+</div>
+
+
+<p>
+<button type="button" class="btn btn-default btn-workflowr btn-workflowr-report" data-toggle="collapse" data-target="#workflowr-report">
+<span class="glyphicon glyphicon-list" aria-hidden="true"></span>
+workflowr <span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span>
+</button>
+</p>
+<div id="workflowr-report" class="collapse">
+<ul class="nav nav-tabs">
+<li class="active">
+<a data-toggle="tab" href="#summary">Summary</a>
+</li>
+<li>
+<a data-toggle="tab" href="#checks"> Checks <span
+class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span>
+</a>
+</li>
+<li>
+<a data-toggle="tab" href="#versions">Past versions</a>
+</li>
+</ul>
+<div class="tab-content">
+<div id="summary" class="tab-pane fade in active">
+<p>
+<strong>Last updated:</strong> 2025-04-12
+</p>
+<p>
+<strong>Checks:</strong> <span
+class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> 7
+<span class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span> 0
+</p>
+<p>
+<strong>Knit directory:</strong>
+<code>omics-imputation-paper/analysis/</code> <span
+class="glyphicon glyphicon-question-sign" aria-hidden="true"
+title="This is the local directory in which the code in this file was executed.">
+</span>
+</p>
+<p>
+This reproducible <a href="https://rmarkdown.rstudio.com">R Markdown</a>
+analysis was created with <a
+  href="https://github.com/workflowr/workflowr">workflowr</a> (version
+1.7.1). The <em>Checks</em> tab describes the reproducibility checks
+that were applied when the results were created. The <em>Past
+versions</em> tab lists the development history.
+</p>
+<hr>
+</div>
+<div id="checks" class="tab-pane fade">
+<div id="workflowr-checks" class="panel-group">
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRMarkdownfilestronguptodate">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>R Markdown file:</strong> up-to-date
+</a>
+</p>
+</div>
+<div id="strongRMarkdownfilestronguptodate"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great! Since the R Markdown file has been committed to the Git
+repository, you know the exact version of the code that produced these
+results.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongEnvironmentstrongempty">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Environment:</strong> empty </a>
+</p>
+</div>
+<div id="strongEnvironmentstrongempty" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! The global environment was empty. Objects defined in the
+global environment can affect the analysis in your R Markdown file in
+unknown ways. For reproduciblity it’s best to always run the code in an
+empty environment.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongSeedstrongcodesetseed1code">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Seed:</strong>
+<code>set.seed(1)</code> </a>
+</p>
+</div>
+<div id="strongSeedstrongcodesetseed1code"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>The command <code>set.seed(1)</code> was run prior to running the
+code in the R Markdown file. Setting a seed ensures that any results
+that rely on randomness, e.g. subsampling or permutations, are
+reproducible.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongSessioninformationstrongrecorded">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Session information:</strong>
+recorded </a>
+</p>
+</div>
+<div id="strongSessioninformationstrongrecorded"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! Recording the operating system, R version, and package
+versions is critical for reproducibility.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongCachestrongnone">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Cache:</strong> none </a>
+</p>
+</div>
+<div id="strongCachestrongnone" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Nice! There were no cached chunks for this analysis, so you can be
+confident that you successfully produced the results during this
+run.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongFilepathsstrongrelative">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>File paths:</strong> relative </a>
+</p>
+</div>
+<div id="strongFilepathsstrongrelative" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! Using relative paths to the files within your workflowr
+project makes it easier to run your code on other machines.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomzq2209omicsimputationpapertree5b008ea4f349bbac90c86a63628250e798cfcd24targetblank5b008eaa">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Repository version:</strong>
+<a href="https://github.com/zq2209/omics-imputation-paper/tree/5b008ea4f349bbac90c86a63628250e798cfcd24" target="_blank">5b008ea</a>
+</a>
+</p>
+</div>
+<div
+id="strongRepositoryversionstrongahrefhttpsgithubcomzq2209omicsimputationpapertree5b008ea4f349bbac90c86a63628250e798cfcd24targetblank5b008eaa"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>
+Great! You are using Git for version control. Tracking code development
+and connecting the code version to the results is critical for
+reproducibility.
+</p>
+<p>
+The results in this page were generated with repository version
+<a href="https://github.com/zq2209/omics-imputation-paper/tree/5b008ea4f349bbac90c86a63628250e798cfcd24" target="_blank">5b008ea</a>.
+See the <em>Past versions</em> tab to see a history of the changes made
+to the R Markdown and HTML files.
+</p>
+<p>
+Note that you need to be careful to ensure that all relevant files for
+the analysis have been committed to Git prior to generating the results
+(you can use <code>wflow_publish</code> or
+<code>wflow_git_commit</code>). workflowr only checks the R Markdown
+file, but you know if there are other scripts or data files that it
+depends on. Below is the status of the Git repository when the results
+were generated:
+</p>
+<pre><code>
+Ignored files:
+    Ignored:    .Rproj.user/
+
+</code></pre>
+<p>
+Note that any generated files, e.g. HTML, png, CSS, etc., are not
+included in this status report because it is ok for generated content to
+have uncommitted changes.
+</p>
+</div>
+</div>
+</div>
+</div>
+<hr>
+</div>
+<div id="versions" class="tab-pane fade">
+<p>
+These are the previous versions of the repository in which changes were
+made to the R Markdown (<code>analysis/qtl_simulation.Rmd</code>) and
+HTML (<code>docs/qtl_simulation.html</code>) files. If you’ve configured
+a remote Git repository (see <code>?wflow_git_remote</code>), click on
+the hyperlinks in the table below to view the files as they were in that
+past version.
+</p>
+<div class="table-responsive">
+<table class="table table-condensed table-hover">
+<thead>
+<tr>
+<th>
+File
+</th>
+<th>
+Version
+</th>
+<th>
+Author
+</th>
+<th>
+Date
+</th>
+<th>
+Message
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+Rmd
+</td>
+<td>
+<a href="https://github.com/zq2209/omics-imputation-paper/blob/5b008ea4f349bbac90c86a63628250e798cfcd24/analysis/qtl_simulation.Rmd" target="_blank">5b008ea</a>
+</td>
+<td>
+“John
+</td>
+<td>
+2025-04-12
+</td>
+<td>
+updates
+</td>
+</tr>
+<tr>
+<td>
+Rmd
+</td>
+<td>
+<a href="https://github.com/zq2209/omics-imputation-paper/blob/7706bf2a4098b61135c0ae9082645d1ac59b97d1/analysis/qtl_simulation.Rmd" target="_blank">7706bf2</a>
+</td>
+<td>
+“John
+</td>
+<td>
+2025-04-12
+</td>
+<td>
+updates
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<p>This page documents pipleine for simulating genotype data for QTL
+analysis and performing fine-mapping analysis. The pipeline consists of
+five main steps that process molecular phenotype data, simulate genetic
+variants, handle missing data, and perform statistical analysis.</p>
+<div id="setup-and-initial-data-loading" class="section level3">
+<h3>Setup and Initial Data Loading</h3>
+<p>First, load the packages needed for this analysis and the original
+phenotype data.</p>
+<pre class="r"><code>library(tidyverse)
+library(igraph)
+library(Matrix)
+library(mvtnorm)
+library(flashier)
+library(impute)
+library(softImpute)
+library(missForest)
+library(xgboost)
+library(randomForest)
+library(PCAtools)
+library(BiocSingular)</code></pre>
+<p>We select features that don’t include any missing for our future
+analysis.</p>
+<pre class="r"><code>phenotype &lt;- read_delim(&#39;Knight_QCed.bed.gz&#39;)
+phenotype &lt;- phenotype[order(phenotype$`#chr`, phenotype$start, phenotype$end ),]
+Y.comp &lt;- phenotype %&gt;% drop_na() 
+#write_delim(Y.comp, &#39;simulation_knight_all.bed.gz&#39;)</code></pre>
+</div>
+<div id="residual-calculation-of-molecular-phenotype-matrix"
+class="section level3">
+<h3>Residual Calculation of Molecular Phenotype Matrix</h3>
+<p>First, we prepare phenotype data by removing effects of known
+covariates and hidden factors. The first step is to extract hidden
+factors from complete phenotype matrix.</p>
+<p>The <code>phenotype</code> should be a dataset in which rows are
+features (i.e. proteins, CpG sites, metabolites) and columns are
+samples. And the first four columns are: chr, start, end, and
+gene_id.</p>
+<p>The <code>covariate</code> should be a dataset for known covariates
+(i.e. age, sex, PMI). The first column is covariates name, the rest are
+corresponding values for each sample.</p>
+<pre class="r"><code>residExpPath  &lt;- Y.comp
+covPath &lt;- &quot;path/to/covariates&quot;
+
+residExpDF &lt;-  read_delim(residExpPath, show_col_types=FALSE)
+covDF &lt;- read_delim(covPath, show_col_types=FALSE)
+covDF &lt;- covDF %&gt;% select_if(~ !any(is.na(.)))
+commonMPSamples &lt;- intersect(colnames(covDF), colnames(residExpDF))
+covDFcommon &lt;- cbind(covDF[, 1], covDF[, commonMPSamples])
+
+residExpPC &lt;- pca(
+    residExpDF[,commonMPSamples], # The first four columns are: chr, start, end, and gene_id; so we skip those.
+    scale = TRUE,
+    center = TRUE,
+    BSPARAM = ExactParam())
+M &lt;- apply(residExpDF[, commonMPSamples], 1, function(X){ (X - mean(X))/sqrt(var(X))});
+residSigma2 &lt;- var(as.vector(M));
+paste(&#39;sigma2:&#39;, residSigma2)
+
+MPPCNum &lt;- chooseMarchenkoPastur(
+    .dim = dim(residExpDF[, commonMPSamples]), var.explained=residExpPC$sdev^2, noise=residSigma2)
+
+MPPCsDF &lt;- as.data.frame(residExpPC$rotated[, 1:MPPCNum])
+
+MPColMatrix &lt;-  matrix(c(rep(&#39;Hidden_Factor_PC&#39;, times=MPPCNum), seq(1, MPPCNum)), ncol=2, nrow=MPPCNum)
+colnames(MPPCsDF) &lt;- apply(MPColMatrix, 1, function(X){return(paste0(X[1], X[2]))})
+rownames(MPPCsDF) &lt;- commonMPSamples
+
+# Add #id Column
+MPPCsDF &lt;- as.data.frame(t(MPPCsDF))
+MPPCsDF$id &lt;- rownames(MPPCsDF)
+
+
+MPPCsDF = MPPCsDF %&gt;% rename(&#39;#id&#39; = &#39;id&#39;)
+colnames(covDFcommon)[1] = &#39;#id&#39;
+
+PCA_pheno = (rbind(covDFcommon, MPPCsDF))</code></pre>
+<p>Then, after calculating hidden factors, we regress out all covariates
+from phenotype data, including known and hidden covariates.</p>
+<pre class="r"><code>pheno &lt;- Y.comp
+
+covariate &lt;- PCA_pheno # output from last step
+
+# Extract samples in both files (Outliers will be removed in here as they are no longer presented in the header of factor)
+extraction_sample_list &lt;- intersect(colnames(pheno), colnames(covariate)) 
+
+
+if(length(extraction_sample_list) == 0){
+  stop(&quot;No samples are overlapped in two files!&quot;)
+}
+
+# Subset the data:
+covariate = covariate[,extraction_sample_list]%&gt;%as.matrix()%&gt;%t()
+pheno_id = pheno%&gt;%dplyr::select(1:4)
+pheno = pheno%&gt;%dplyr::select(rownames(covariate))%&gt;%as.matrix()%&gt;%t()
+
+# Get residual 
+pheno_resid = .lm.fit(x = cbind(1,covariate), y = pheno)$residuals
+pheno_output = cbind(pheno_id, pheno_resid%&gt;%t())
+
+pheno_output &lt;- pheno_output[order(pheno_output$`#chr`, pheno_output$start, pheno_output$end ),]</code></pre>
+</div>
+<div id="simulate-genetic-variants-x-matrix" class="section level3">
+<h3>Simulate Genetic Variants (X Matrix)</h3>
+<p>The next step is to generate simulated genetic variants associated
+with the residual phenotypes.</p>
+<p>We will use residual of phenotype (<code>pheno_output</code>) to
+simulate X.</p>
+<pre class="r"><code>source(&#39;code/simulateX.R&#39;)
+
+Xmat &lt;- NULL # Final matrix of X
+Chr &lt;- NULL # summary of number of snps for each feature
+Beta &lt;- NULL # true casual
+
+effect &lt;- 1
+gve &lt;- 0.5
+
+Y &lt;- pheno_output # This would be the residual of phenotype, output from step 1
+
+for (i in 1:n) { # n is the number of feature we will simulate
+  print(paste0(&#39;Generating X for &#39;, i, &#39;th feature&#39;))
+  y &lt;- matrix(Y[i, 5:ncol(Y)], nrow = 1) # drop chr, start, end , ID
+  sim_X &lt;- simulateX(y, effect, gve)
+  
+  Xmat &lt;- cbind(Xmat, sim_X$X)
+  Chr &lt;- rbind(Chr, c(i, ncol(sim_X$X)))
+  Beta[[i]] &lt;- sim_X$true_causal
+}
+
+Chr &lt;- as.data.frame(Chr)
+Chr$V2 &lt;- as.numeric(Chr$V2)
+Chr$V3 &lt;- cumsum(Chr$V2)</code></pre>
+</div>
+<div id="missing-data-assignment-and-imputation" class="section level3">
+<h3>Missing Data Assignment and Imputation</h3>
+<p>This step, we will introduce and impute missing data for our
+phenotype matrix.</p>
+<ul>
+<li><p>The extact details of assigning missing refer to Section
+<code>Adding Additional Missing Values</code> in <a
+href="https://zq2209.github.io/omics-imputation-paper/imputation_accuracy_benchmark.html">imputation
+accuracy benchmark</a>. The output from this step is
+<code>mat_na</code>.</p></li>
+<li><p>For imputing missing data, refer to Section
+<code>Impute Dataset with Generated Missing by Using Different Methods</code>
+in <a
+href="https://zq2209.github.io/omics-imputation-paper/imputation_accuracy_benchmark.html">imputation
+accuracy benchmark</a>.</p></li>
+</ul>
+</div>
+<div id="residual-calculation-of-imputed-phenotype-matrix"
+class="section level3">
+<h3>Residual Calculation of Imputed Phenotype Matrix</h3>
+<p>The next step is to regress out covariates from imputed phenotype.
+This step will be repeated for each method. Again, identify hidden
+factors first.</p>
+<pre class="r"><code>residExpDF &lt;- Y.imp # output after imputation, imputated phenotype
+covDF &lt;- read_delim(covPath, show_col_types=FALSE)
+covDF &lt;- covDF %&gt;% select_if(~ !any(is.na(.)))
+commonMPSamples &lt;- intersect(colnames(covDF), colnames(residExpDF))
+covDFcommon &lt;- cbind(covDF[, 1], covDF[, commonMPSamples])
+
+residExpPC &lt;- pca(
+    residExpDF[,commonMPSamples], # The first four columns are: chr, start, end, and gene_id; so we skip those.
+    scale = TRUE,
+    center = TRUE,
+    BSPARAM = ExactParam())
+M &lt;- apply(residExpDF[, commonMPSamples], 1, function(X){ (X - mean(X))/sqrt(var(X))});
+residSigma2 &lt;- var(as.vector(M));
+paste(&#39;sigma2:&#39;, residSigma2)
+
+MPPCNum &lt;- chooseMarchenkoPastur(
+    .dim = dim(residExpDF[, commonMPSamples]), var.explained=residExpPC$sdev^2, noise=residSigma2)
+
+MPPCsDF &lt;- as.data.frame(residExpPC$rotated[, 1:MPPCNum])
+
+MPColMatrix &lt;-  matrix(c(rep(&#39;Hidden_Factor_PC&#39;, times=MPPCNum), seq(1, MPPCNum)), ncol=2, nrow=MPPCNum)
+colnames(MPPCsDF) &lt;- apply(MPColMatrix, 1, function(X){return(paste0(X[1], X[2]))})
+rownames(MPPCsDF) &lt;- commonMPSamples
+
+# Add #id Column
+MPPCsDF &lt;- as.data.frame(t(MPPCsDF))
+MPPCsDF$id &lt;- rownames(MPPCsDF)
+
+
+MPPCsDF = MPPCsDF %&gt;% rename(&#39;#id&#39; = &#39;id&#39;)
+colnames(covDFcommon)[1] = &#39;#id&#39;
+
+PCA_pheno = (rbind(covDFcommon, MPPCsDF))</code></pre>
+<p>Then, we calculate the residuals.</p>
+<pre class="r"><code>pheno &lt;- Y.imp # imputed phenotype
+
+covariate &lt;- PCA_pheno # output from last step
+
+# Extract samples in both files (Outliers will be removed in here as they are no longer presented in the header of factor)
+extraction_sample_list &lt;- intersect(colnames(pheno), colnames(covariate)) 
+
+
+if(length(extraction_sample_list) == 0){
+  stop(&quot;No samples are overlapped in two files!&quot;)
+}
+
+# Subset the data:
+covariate = covariate[,extraction_sample_list]%&gt;%as.matrix()%&gt;%t()
+pheno_id = pheno%&gt;%dplyr::select(1:4)
+pheno = pheno%&gt;%dplyr::select(rownames(covariate))%&gt;%as.matrix()%&gt;%t()
+
+# Get residual 
+pheno_resid = .lm.fit(x = cbind(1,covariate), y = pheno)$residuals
+pheno_output = cbind(pheno_id, pheno_resid%&gt;%t())
+
+pheno_output &lt;- pheno_output[order(pheno_output$`#chr`, pheno_output$start, pheno_output$end ),]</code></pre>
+</div>
+<div id="susie-fine-mapping-analysis" class="section level3">
+<h3>SuSiE Fine-mapping Analysis</h3>
+<p>Finally, we will identify causal genetic variants by using each
+method and evaluate performance with ground truth.</p>
+<p>The number of ground truth is calculated below. And the true PIP is
+extracted from <code>Beta</code></p>
+<pre class="r"><code>no.true &lt;- sum(sapply((1:n), function(x){length(Beta[[x]])}))
+
+true.pip &lt;- list()
+for (i in 1:nrow(pheno_output)) {
+  n_pip &lt;- Chr$V2[i]
+  pip_lst &lt;- rep(0, n_pip)
+  pip_lst[Beta[[i]]] &lt;- 1
+  true.pip[[i]] &lt;- pip_lst
+}</code></pre>
+<p>In this analysis, we are interested in the result if we only use
+samples without missing (i.e. no imputation).</p>
+<pre class="r"><code># No imputation
+noimp.susie.result &lt;- NULL
+noimp.susie.pip &lt;- NULL
+
+missing_mat &lt;- as.data.frame(mat_na)[, colnames(pheno_output)[-c(1:4)]]
+original_mat &lt;- missing_mat
+phenoToUse &lt;- pheno_output[, -c(1:4)]
+
+YtoUse &lt;- as.matrix(t(phenoToUse))
+OriginalX &lt;- as.matrix(t(original_mat))
+
+for (i in 1:nrow(YtoUse)) {
+  # Select X
+  #print(i)
+  
+  if (i == 1) {
+    X &lt;- Xmat[, 1:Chr$V3[i]]
+  } else {
+    X &lt;- Xmat[, (Chr$V3[i-1]+1):Chr$V3[i]]
+  }
+  # missing entries
+  mis_sample &lt;- which(is.na(OriginalX[, i]))
+  # observed sample
+  X_obs &lt;- X[-mis_sample, ]
+  Y_obs &lt;- YtoUse[, i][-mis_sample]
+  # Run susie
+  
+  fitted &lt;- susie(X_obs, Y_obs, compute_univariate_zscore = TRUE)
+  noimp.susie.result[[i]] &lt;- c(fitted$sets$cs$L1, fitted$sets$cs$L2, fitted$sets$cs$L3)
+  # flash.size &lt;- c(flash.size, c(length(fitted$sets$cs$L1), length(fitted$sets$cs$L2), length(fitted$sets$cs$L3)))
+  # flash.purity.min &lt;- c(flash.purity.min, fitted$sets$purity$min.abs.corr)
+  # flash.purity.med &lt;- c(flash.purity.med, fitted$sets$purity$median.abs.corr)
+  noimp.susie.pip[[i]] &lt;- fitted$pip
+  #flash.sd &lt;- c(flash.sd, fitted$sigma2)
+}
+
+sum(sapply((1:length(noimp.susie.result)), function(x){length(noimp.susie.result[[x]])}))
+sum(sapply((1:length(noimp.susie.result)), function(x){(length(which(noimp.susie.result[[x]] %in% Beta[[x]])))}))</code></pre>
+<p>The SuSiE fine-mapping is also applied to imputed phenotype. The
+following is an example for EBMF imputed phenotype. This step will be
+repeated for each method.</p>
+<pre class="r"><code>ebmf.susie.result &lt;- NULL
+ebmf.susie.pip &lt;- NULL
+
+for (i in 1:nrow(YtoUse)) {
+  # Select X
+  #print(i)
+  
+  if (i == 1) {
+    X &lt;- Xmat[, 1:Chr$V3[i]]
+  } else {
+    X &lt;- Xmat[, (Chr$V3[i-1]+1):Chr$V3[i]]
+  }
+  
+  # Run susie
+  
+  fitted &lt;- susie(X, YtoUse[, i], compute_univariate_zscore = TRUE)
+  ebmf.susie.result[[i]] &lt;- c(fitted$sets$cs$L1, fitted$sets$cs$L2, fitted$sets$cs$L3)
+  # flash.size &lt;- c(flash.size, c(length(fitted$sets$cs$L1), length(fitted$sets$cs$L2), length(fitted$sets$cs$L3)))
+  # flash.purity.min &lt;- c(flash.purity.min, fitted$sets$purity$min.abs.corr)
+  # flash.purity.med &lt;- c(flash.purity.med, fitted$sets$purity$median.abs.corr)
+  ebmf.susie.pip[[i]] &lt;- fitted$pip
+  #flash.sd &lt;- c(flash.sd, fitted$sigma2)
+}
+
+
+ebmf.TP &lt;- sum(sapply((1:length(ebmf.susie.result)), function(x){length(ebmf.susie.result[[x]])}))
+ebmf.FP &lt;- sum(sapply((1:length(ebmf.susie.result)), function(x){(length(which(ebmf.susie.result[[x]] %in% Beta[[x]])))}))</code></pre>
+<p>The output from this step will be
+<code>number of true positive</code>,
+<code>number of false positives</code>, and
+<code>a list of PIP values</code> for each method.</p>
+</div>
+<div id="visulization-of-susie-results" class="section level3">
+<h3>Visulization of SuSiE Results</h3>
+<p>We plot the PR and ROC curves by using PIP from each method to
+compare its performance with ground truth.</p>
+<pre class="r"><code>df.pip &lt;- data.frame(true = unlist(true.pip),
+                     ebmf = unlist(ebmf.susie.pip),
+                     xgb = unlist(xgb.susie.pip),
+                     rf = unlist(mofa.susie.pip),
+                     knn = unlist(knn.susie.pip),
+                     soft = unlist(soft.susie.pip),
+                     mean = unlist(mean.susie.pip),
+                     lod = unlist(lod.susie.pip),
+                     mofa = unlist(rf.susie.pip),
+                     noimp = unlist(noimp.susie.pip)
+                     )</code></pre>
+<pre class="r"><code>roc_curve &lt;- roc(unlist(true.pip), unlist(flash.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;#F8766D&quot;, lwd = 2)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(mofa.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;orange&quot;, lwd = 2, add=TRUE)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(xgb.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;#53B400&quot;, lwd = 2, add=TRUE)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(rf.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;#00BFC4&quot;, lwd = 2, add=TRUE)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(knn.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;#619CFF&quot;, lwd = 2, add=TRUE)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(soft.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;#B79F00&quot;, lwd = 2, add=TRUE)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(mean.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &quot;#F564E3&quot;, lwd = 2, add=TRUE)
+
+roc_curve &lt;- roc(unlist(true.pip), unlist(lod.susie.pip))
+plot(roc_curve, main = &quot;ROC Curve&quot;, col = &#39;blue&#39;, lwd = 2, add=TRUE)
+
+legend(&quot;bottomright&quot;,c(&#39;EBMF&#39;,&#39;MOFA2&#39;, &#39;SoftImpute&#39;, &quot;missXGB&quot;, &#39;missForest&#39;, &quot;KNN&quot;, &quot;MeanImpute&quot;,&#39;LOD&#39;),col=c(&quot;#F8766D&quot;, &#39;orange&#39;, &quot;#B79F00&quot;, &quot;#53B400&quot;,  &quot;#00BFC4&quot;,  &quot;#619CFF&quot;,  &quot;#F564E3&quot;,  &#39;blue&#39;),lwd=3)</code></pre>
+<pre class="r"><code>pred &lt;- prediction(df.pip$ebmf, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;#F8766D&#39;,
+    main=&quot;ROC Curves&quot;, lwd = 2)
+
+pred &lt;- prediction(df.pip$xgb, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;#53B400&#39;, add=TRUE, lwd = 2)
+
+pred &lt;- prediction(df.pip$rf, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;#00BFC4&#39;, add=TRUE, lwd = 2)
+
+pred &lt;- prediction(df.pip$knn, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;#619CFF&#39;, add=TRUE, lwd = 2)
+
+pred &lt;- prediction(df.pip$soft, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;#B79F00&#39;, add=TRUE, lwd = 2)
+
+pred &lt;- prediction(df.pip$mean, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;#F564E3&#39;, add=TRUE, lwd = 2)
+
+pred &lt;- prediction(df.pip$lod, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;blue&#39;, add=TRUE, lwd = 2)
+
+pred &lt;- prediction(df.pip$mofa, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;orange&#39;, lwd = 2, add = TRUE)
+
+pred &lt;- prediction(df.pip$noimp, df.pip$true)
+perf &lt;- performance(pred,&quot;tpr&quot;,&quot;fpr&quot;)
+plot(perf, col=&#39;black&#39;, lwd = 2, add = TRUE)
+
+abline(v = 0.05, col = &#39;red&#39;, lty = 2, lwd = 2)
+
+legend(&quot;bottomright&quot;,c(&#39;gEBMF&#39;,&#39;MOFA2&#39;, &#39;SoftImpute&#39;, &quot;missXGB&quot;, &#39;missForest&#39;, &quot;KNN&quot;, &quot;MeanImpute&quot;,&#39;LOD&#39;, &#39;NoImpute&#39;),col=c(&quot;#F8766D&quot;, &#39;orange&#39;, &quot;#B79F00&quot;, &quot;#53B400&quot;,  &quot;#00BFC4&quot;,  &quot;#619CFF&quot;,  &quot;#F564E3&quot;,  &#39;blue&#39;, &#39;black&#39;),lwd=2, cex = 0.6)</code></pre>
+<p>We also plot the coverage for each method. The coverage is defind as
+1 - FDR (False Discovery Rate).</p>
+<pre class="r"><code>fdr &lt;- c(ebmf.FP/(ebmf.FP+ebmf.TP), mofa.FP/(mofa.FP+mofa.TP), soft.FP/(soft.FP+soft.TP),
+         xgb.FP/(xgb.FP+xgb.TP), rf.FP/(rf.FP+rf.TP), knn.FP/(knn.FP+knn.TP),
+         mean.FP/(mean.FP+mean.TP), lod.FP/(lod.FP+lod.TP), noimp.FP/(noimp.FP+noimp.TP))
+coverage1 &lt;- 1 - fdr
+method &lt;- c(&#39;gEBMF&#39;,&#39;MOFA2&#39;, &#39;SoftImpute&#39;, &quot;missXGB&quot;, &#39;missForest&#39;, &quot;KNN&quot;, &quot;MeanImpute&quot;,&#39;LOD&#39;, &#39;NoImpute&#39;)
+df$method &lt;- factor(df$method, levels = c(&#39;gEBMF&#39;, &#39;MOFA2&#39;, &quot;SoftImpute&quot;, &quot;missXGB&quot;, &#39;missForest&#39;, &quot;KNN&quot;, &quot;MeanImpute&quot;, &#39;LOD&#39;, &#39;NoImpute&#39;))
+custom_colors &lt;- c(&quot;gEBMF&quot; = &quot;#F8766D&quot;, &quot;SoftImpute&quot; = &quot;#B79F00&quot;, &quot;MissXGB&quot; = &quot;#53B400&quot;, &#39;MissForest&#39; = &quot;#00BFC4&quot;, &quot;KNN&quot; = &quot;#619CFF&quot;, &quot;MeanImpute&quot; = &quot;#F564E3&quot;, &#39;LOD&#39; = &#39;blue&#39;, &#39;NoImpute&#39; = &#39;black&#39;, &#39;MOFA2&#39; = &#39;orange&#39;)
+
+ggplot(df, aes(x = method, y = coverage, fill = method)) +
+  geom_bar(stat = &#39;identity&#39;) +
+  geom_hline(yintercept = 0.95, linetype = &#39;dashed&#39;, color = &#39;red&#39;) +
+  coord_cartesian(ylim = c(0.75, 1)) +
+  scale_fill_manual(values = custom_colors) +
+  labs(title = &#39;Coverage&#39;,
+       x = &#39;Method&#39;,
+       y = &#39;Coverage&#39;) +
+  scale_x_discrete(guide = guide_axis(angle=60)) +
+  theme_minimal()</code></pre>
+</div>
+<div id="example-output" class="section level3">
+<h3>Example Output</h3>
+<ul>
+<li>PR/ROC curves</li>
+</ul>
+<p><img src="figure/knight_pr_roc.png" style="width:60.0%" /> -
+Coverage</p>
+<p><img src="figure/knight-coverage.png" style="width:60.0%" /></p>
+<br>
+<p>
+<button type="button" class="btn btn-default btn-workflowr btn-workflowr-sessioninfo" data-toggle="collapse" data-target="#workflowr-sessioninfo" style="display: block;">
+<span class="glyphicon glyphicon-wrench" aria-hidden="true"></span>
+Session information
+</button>
+</p>
+<div id="workflowr-sessioninfo" class="collapse">
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 4.4.3 (2025-02-28)
+Platform: aarch64-apple-darwin20
+Running under: macOS Sequoia 15.4
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/4.4-arm64/Resources/lib/libRblas.0.dylib 
+LAPACK: /Library/Frameworks/R.framework/Versions/4.4-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+time zone: America/Chicago
+tzcode source: internal
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+loaded via a namespace (and not attached):
+ [1] vctrs_0.6.5       cli_3.6.4         knitr_1.50        rlang_1.1.5      
+ [5] xfun_0.51         stringi_1.8.7     promises_1.3.2    jsonlite_2.0.0   
+ [9] workflowr_1.7.1   glue_1.8.0        rprojroot_2.0.4   git2r_0.36.2     
+[13] htmltools_0.5.8.1 httpuv_1.6.15     sass_0.4.9        rmarkdown_2.29   
+[17] evaluate_1.0.3    jquerylib_0.1.4   tibble_3.2.1      fastmap_1.2.0    
+[21] yaml_2.3.10       lifecycle_1.0.4   whisker_0.4.1     stringr_1.5.1    
+[25] compiler_4.4.3    fs_1.6.5          Rcpp_1.0.14       pkgconfig_2.0.3  
+[29] rstudioapi_0.17.1 later_1.4.1       digest_0.6.37     R6_2.6.1         
+[33] pillar_1.10.1     magrittr_2.0.3    bslib_0.9.0       tools_4.4.3      
+[37] cachem_1.1.0     </code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+
+<!-- Adjust MathJax settings so that all math formulae are shown using
+TeX fonts only; see
+https://docs.mathjax.org/en/latest/web/configuration.html. This will make
+the presentation more consistent at the cost of the webpage sometimes
+taking slightly longer to load. Note that this only works because the
+footer is added to webpages before the MathJax javascript. -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    "HTML-CSS": { availableFonts: ["TeX"] }
+  });
+</script>
+
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

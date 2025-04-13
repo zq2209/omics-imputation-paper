@@ -436,6 +436,8 @@ ggplot(df, aes(x = method, y = coverage, fill = method)) +
 - PR/ROC curves
 
 ![](figure/knight_pr_roc.png){width="60%"}
+
+
 - Coverage
 
 ![](figure/knight-coverage.png){width="60%"}
