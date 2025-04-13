@@ -1,0 +1,444 @@
+---
+title: "Compare QTL performance on different methods for simulated omics data"
+author: "Zining Qi"
+output: workflowr::wflow_html
+---
+
+This page documents pipleine for simulating genotype data for QTL analysis and performing fine-mapping analysis. The pipeline consists of five main steps that process molecular phenotype data, simulate genetic variants, handle missing data, and perform statistical analysis.
+
+### Setup and Initial Data Loading
+
+First, load the packages needed for this analysis and the original phenotype data.
+
+```{r, eval=FALSE}
+library(tidyverse)
+library(igraph)
+library(Matrix)
+library(mvtnorm)
+library(flashier)
+library(impute)
+library(softImpute)
+library(missForest)
+library(xgboost)
+library(randomForest)
+library(PCAtools)
+library(BiocSingular)
+```
+
+We select features that don't include any missing for our future analysis. 
+
+```{r, eval=FALSE}
+phenotype <- read_delim('Knight_QCed.bed.gz')
+phenotype <- phenotype[order(phenotype$`#chr`, phenotype$start, phenotype$end ),]
+Y.comp <- phenotype %>% drop_na() 
+#write_delim(Y.comp, 'simulation_knight_all.bed.gz')
+```
+
+
+
+### Residual Calculation of Molecular Phenotype Matrix
+First, we prepare phenotype data by removing effects of known covariates and hidden factors. The first step is to extract hidden factors from complete phenotype matrix.  
+
+The `phenotype` should be a dataset in which rows are features (i.e. proteins, CpG sites, metabolites) and columns are samples. And the first four columns are: chr, start, end, and gene_id. 
+
+The `covariate` should be a dataset for known covariates (i.e. age, sex, PMI). The first column is covariates name, the rest are corresponding values for each sample. 
+
+```{r, eval=FALSE}
+residExpPath  <- Y.comp
+covPath <- "path/to/covariates"
+
+residExpDF <-  read_delim(residExpPath, show_col_types=FALSE)
+covDF <- read_delim(covPath, show_col_types=FALSE)
+covDF <- covDF %>% select_if(~ !any(is.na(.)))
+commonMPSamples <- intersect(colnames(covDF), colnames(residExpDF))
+covDFcommon <- cbind(covDF[, 1], covDF[, commonMPSamples])
+
+residExpPC <- pca(
+    residExpDF[,commonMPSamples], # The first four columns are: chr, start, end, and gene_id; so we skip those.
+    scale = TRUE,
+    center = TRUE,
+    BSPARAM = ExactParam())
+M <- apply(residExpDF[, commonMPSamples], 1, function(X){ (X - mean(X))/sqrt(var(X))});
+residSigma2 <- var(as.vector(M));
+paste('sigma2:', residSigma2)
+
+MPPCNum <- chooseMarchenkoPastur(
+    .dim = dim(residExpDF[, commonMPSamples]), var.explained=residExpPC$sdev^2, noise=residSigma2)
+
+MPPCsDF <- as.data.frame(residExpPC$rotated[, 1:MPPCNum])
+
+MPColMatrix <-  matrix(c(rep('Hidden_Factor_PC', times=MPPCNum), seq(1, MPPCNum)), ncol=2, nrow=MPPCNum)
+colnames(MPPCsDF) <- apply(MPColMatrix, 1, function(X){return(paste0(X[1], X[2]))})
+rownames(MPPCsDF) <- commonMPSamples
+
+# Add #id Column
+MPPCsDF <- as.data.frame(t(MPPCsDF))
+MPPCsDF$id <- rownames(MPPCsDF)
+
+
+MPPCsDF = MPPCsDF %>% rename('#id' = 'id')
+colnames(covDFcommon)[1] = '#id'
+
+PCA_pheno = (rbind(covDFcommon, MPPCsDF))
+```
+
+Then, after calculating hidden factors, we regress out all covariates from phenotype data, including known and hidden covariates. 
+
+```{r, eval=FALSE}
+pheno <- Y.comp
+
+covariate <- PCA_pheno # output from last step
+
+# Extract samples in both files (Outliers will be removed in here as they are no longer presented in the header of factor)
+extraction_sample_list <- intersect(colnames(pheno), colnames(covariate)) 
+
+
+if(length(extraction_sample_list) == 0){
+  stop("No samples are overlapped in two files!")
+}
+
+# Subset the data:
+covariate = covariate[,extraction_sample_list]%>%as.matrix()%>%t()
+pheno_id = pheno%>%dplyr::select(1:4)
+pheno = pheno%>%dplyr::select(rownames(covariate))%>%as.matrix()%>%t()
+
+# Get residual 
+pheno_resid = .lm.fit(x = cbind(1,covariate), y = pheno)$residuals
+pheno_output = cbind(pheno_id, pheno_resid%>%t())
+
+pheno_output <- pheno_output[order(pheno_output$`#chr`, pheno_output$start, pheno_output$end ),]
+```
+
+
+
+### Simulate Genetic Variants (X Matrix)
+The next step is to generate simulated genetic variants associated with the residual phenotypes.
+
+We will use residual of phenotype (`pheno_output`) to simulate X. 
+```{r, eval=FALSE}
+source('code/simulateX.R')
+
+Xmat <- NULL # Final matrix of X
+Chr <- NULL # summary of number of snps for each feature
+Beta <- NULL # true casual
+
+effect <- 1
+gve <- 0.5
+
+Y <- pheno_output # This would be the residual of phenotype, output from step 1
+
+for (i in 1:n) { # n is the number of feature we will simulate
+  print(paste0('Generating X for ', i, 'th feature'))
+  y <- matrix(Y[i, 5:ncol(Y)], nrow = 1) # drop chr, start, end , ID
+  sim_X <- simulateX(y, effect, gve)
+  
+  Xmat <- cbind(Xmat, sim_X$X)
+  Chr <- rbind(Chr, c(i, ncol(sim_X$X)))
+  Beta[[i]] <- sim_X$true_causal
+}
+
+Chr <- as.data.frame(Chr)
+Chr$V2 <- as.numeric(Chr$V2)
+Chr$V3 <- cumsum(Chr$V2)
+```
+
+### Missing Data Assignment and Imputation
+
+This step, we will introduce and impute missing data for our phenotype matrix. 
+
+- The extact details of assigning missing refer to Section `Adding Additional Missing Values` in [imputation accuracy benchmark](https://zq2209.github.io/omics-imputation-paper/imputation_accuracy_benchmark.html). The output from this step is `mat_na`.
+
+- For imputing missing data, refer to Section `Impute Dataset with Generated Missing by Using Different Methods` in [imputation accuracy benchmark](https://zq2209.github.io/omics-imputation-paper/imputation_accuracy_benchmark.html).
+
+
+
+### Residual Calculation of Imputed Phenotype Matrix
+
+The next step is to regress out covariates from imputed phenotype. This step will be repeated for each method. Again, identify hidden factors first. 
+
+```{r, eval=FALSE}
+residExpDF <- Y.imp # output after imputation, imputated phenotype
+covDF <- read_delim(covPath, show_col_types=FALSE)
+covDF <- covDF %>% select_if(~ !any(is.na(.)))
+commonMPSamples <- intersect(colnames(covDF), colnames(residExpDF))
+covDFcommon <- cbind(covDF[, 1], covDF[, commonMPSamples])
+
+residExpPC <- pca(
+    residExpDF[,commonMPSamples], # The first four columns are: chr, start, end, and gene_id; so we skip those.
+    scale = TRUE,
+    center = TRUE,
+    BSPARAM = ExactParam())
+M <- apply(residExpDF[, commonMPSamples], 1, function(X){ (X - mean(X))/sqrt(var(X))});
+residSigma2 <- var(as.vector(M));
+paste('sigma2:', residSigma2)
+
+MPPCNum <- chooseMarchenkoPastur(
+    .dim = dim(residExpDF[, commonMPSamples]), var.explained=residExpPC$sdev^2, noise=residSigma2)
+
+MPPCsDF <- as.data.frame(residExpPC$rotated[, 1:MPPCNum])
+
+MPColMatrix <-  matrix(c(rep('Hidden_Factor_PC', times=MPPCNum), seq(1, MPPCNum)), ncol=2, nrow=MPPCNum)
+colnames(MPPCsDF) <- apply(MPColMatrix, 1, function(X){return(paste0(X[1], X[2]))})
+rownames(MPPCsDF) <- commonMPSamples
+
+# Add #id Column
+MPPCsDF <- as.data.frame(t(MPPCsDF))
+MPPCsDF$id <- rownames(MPPCsDF)
+
+
+MPPCsDF = MPPCsDF %>% rename('#id' = 'id')
+colnames(covDFcommon)[1] = '#id'
+
+PCA_pheno = (rbind(covDFcommon, MPPCsDF))
+```
+
+Then, we calculate the residuals. 
+
+```{r, eval=FALSE}
+pheno <- Y.imp # imputed phenotype
+
+covariate <- PCA_pheno # output from last step
+
+# Extract samples in both files (Outliers will be removed in here as they are no longer presented in the header of factor)
+extraction_sample_list <- intersect(colnames(pheno), colnames(covariate)) 
+
+
+if(length(extraction_sample_list) == 0){
+  stop("No samples are overlapped in two files!")
+}
+
+# Subset the data:
+covariate = covariate[,extraction_sample_list]%>%as.matrix()%>%t()
+pheno_id = pheno%>%dplyr::select(1:4)
+pheno = pheno%>%dplyr::select(rownames(covariate))%>%as.matrix()%>%t()
+
+# Get residual 
+pheno_resid = .lm.fit(x = cbind(1,covariate), y = pheno)$residuals
+pheno_output = cbind(pheno_id, pheno_resid%>%t())
+
+pheno_output <- pheno_output[order(pheno_output$`#chr`, pheno_output$start, pheno_output$end ),]
+```
+
+### SuSiE Fine-mapping Analysis
+
+Finally, we will identify causal genetic variants by using each method and evaluate performance with ground truth.
+
+The number of ground truth is calculated below. And the true PIP is extracted from `Beta`
+
+```{r, eval=FALSE}
+no.true <- sum(sapply((1:n), function(x){length(Beta[[x]])}))
+
+true.pip <- list()
+for (i in 1:nrow(pheno_output)) {
+  n_pip <- Chr$V2[i]
+  pip_lst <- rep(0, n_pip)
+  pip_lst[Beta[[i]]] <- 1
+  true.pip[[i]] <- pip_lst
+}
+
+```
+
+
+In this analysis, we are interested in the result if we only use samples without missing (i.e. no imputation). 
+
+```{r, eval=FALSE}
+# No imputation
+noimp.susie.result <- NULL
+noimp.susie.pip <- NULL
+
+missing_mat <- as.data.frame(mat_na)[, colnames(pheno_output)[-c(1:4)]]
+original_mat <- missing_mat
+phenoToUse <- pheno_output[, -c(1:4)]
+
+YtoUse <- as.matrix(t(phenoToUse))
+OriginalX <- as.matrix(t(original_mat))
+
+for (i in 1:nrow(YtoUse)) {
+  # Select X
+  #print(i)
+  
+  if (i == 1) {
+    X <- Xmat[, 1:Chr$V3[i]]
+  } else {
+    X <- Xmat[, (Chr$V3[i-1]+1):Chr$V3[i]]
+  }
+  # missing entries
+  mis_sample <- which(is.na(OriginalX[, i]))
+  # observed sample
+  X_obs <- X[-mis_sample, ]
+  Y_obs <- YtoUse[, i][-mis_sample]
+  # Run susie
+  
+  fitted <- susie(X_obs, Y_obs, compute_univariate_zscore = TRUE)
+  noimp.susie.result[[i]] <- c(fitted$sets$cs$L1, fitted$sets$cs$L2, fitted$sets$cs$L3)
+  # flash.size <- c(flash.size, c(length(fitted$sets$cs$L1), length(fitted$sets$cs$L2), length(fitted$sets$cs$L3)))
+  # flash.purity.min <- c(flash.purity.min, fitted$sets$purity$min.abs.corr)
+  # flash.purity.med <- c(flash.purity.med, fitted$sets$purity$median.abs.corr)
+  noimp.susie.pip[[i]] <- fitted$pip
+  #flash.sd <- c(flash.sd, fitted$sigma2)
+}
+
+sum(sapply((1:length(noimp.susie.result)), function(x){length(noimp.susie.result[[x]])}))
+sum(sapply((1:length(noimp.susie.result)), function(x){(length(which(noimp.susie.result[[x]] %in% Beta[[x]])))}))
+
+```
+
+
+The SuSiE fine-mapping is also applied to imputed phenotype. The following is an example for EBMF imputed phenotype. This step will be repeated for each method. 
+
+```{r}
+ebmf.susie.result <- NULL
+ebmf.susie.pip <- NULL
+
+for (i in 1:nrow(YtoUse)) {
+  # Select X
+  #print(i)
+  
+  if (i == 1) {
+    X <- Xmat[, 1:Chr$V3[i]]
+  } else {
+    X <- Xmat[, (Chr$V3[i-1]+1):Chr$V3[i]]
+  }
+  
+  # Run susie
+  
+  fitted <- susie(X, YtoUse[, i], compute_univariate_zscore = TRUE)
+  ebmf.susie.result[[i]] <- c(fitted$sets$cs$L1, fitted$sets$cs$L2, fitted$sets$cs$L3)
+  # flash.size <- c(flash.size, c(length(fitted$sets$cs$L1), length(fitted$sets$cs$L2), length(fitted$sets$cs$L3)))
+  # flash.purity.min <- c(flash.purity.min, fitted$sets$purity$min.abs.corr)
+  # flash.purity.med <- c(flash.purity.med, fitted$sets$purity$median.abs.corr)
+  ebmf.susie.pip[[i]] <- fitted$pip
+  #flash.sd <- c(flash.sd, fitted$sigma2)
+}
+
+
+ebmf.TP <- sum(sapply((1:length(ebmf.susie.result)), function(x){length(ebmf.susie.result[[x]])}))
+ebmf.FP <- sum(sapply((1:length(ebmf.susie.result)), function(x){(length(which(ebmf.susie.result[[x]] %in% Beta[[x]])))}))
+```
+
+The output from this step will be `number of true positive`, `number of false positives`, and `a list of PIP values` for each method. 
+
+### Visulization of SuSiE Results
+
+We plot the PR and ROC curves by using PIP from each method to compare its performance with ground truth. 
+
+```{r, eval=FALSE}
+df.pip <- data.frame(true = unlist(true.pip),
+                     ebmf = unlist(ebmf.susie.pip),
+                     xgb = unlist(xgb.susie.pip),
+                     rf = unlist(mofa.susie.pip),
+                     knn = unlist(knn.susie.pip),
+                     soft = unlist(soft.susie.pip),
+                     mean = unlist(mean.susie.pip),
+                     lod = unlist(lod.susie.pip),
+                     mofa = unlist(rf.susie.pip),
+                     noimp = unlist(noimp.susie.pip)
+                     )
+```
+
+```{r, eval=FALSE}
+roc_curve <- roc(unlist(true.pip), unlist(flash.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "#F8766D", lwd = 2)
+
+roc_curve <- roc(unlist(true.pip), unlist(mofa.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "orange", lwd = 2, add=TRUE)
+
+roc_curve <- roc(unlist(true.pip), unlist(xgb.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "#53B400", lwd = 2, add=TRUE)
+
+roc_curve <- roc(unlist(true.pip), unlist(rf.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "#00BFC4", lwd = 2, add=TRUE)
+
+roc_curve <- roc(unlist(true.pip), unlist(knn.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "#619CFF", lwd = 2, add=TRUE)
+
+roc_curve <- roc(unlist(true.pip), unlist(soft.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "#B79F00", lwd = 2, add=TRUE)
+
+roc_curve <- roc(unlist(true.pip), unlist(mean.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = "#F564E3", lwd = 2, add=TRUE)
+
+roc_curve <- roc(unlist(true.pip), unlist(lod.susie.pip))
+plot(roc_curve, main = "ROC Curve", col = 'blue', lwd = 2, add=TRUE)
+
+legend("bottomright",c('EBMF','MOFA2', 'SoftImpute', "missXGB", 'missForest', "KNN", "MeanImpute",'LOD'),col=c("#F8766D", 'orange', "#B79F00", "#53B400",  "#00BFC4",  "#619CFF",  "#F564E3",  'blue'),lwd=3)
+```
+
+```{r, eval=FALSE}
+pred <- prediction(df.pip$ebmf, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='#F8766D',
+    main="ROC Curves", lwd = 2)
+
+pred <- prediction(df.pip$xgb, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='#53B400', add=TRUE, lwd = 2)
+
+pred <- prediction(df.pip$rf, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='#00BFC4', add=TRUE, lwd = 2)
+
+pred <- prediction(df.pip$knn, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='#619CFF', add=TRUE, lwd = 2)
+
+pred <- prediction(df.pip$soft, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='#B79F00', add=TRUE, lwd = 2)
+
+pred <- prediction(df.pip$mean, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='#F564E3', add=TRUE, lwd = 2)
+
+pred <- prediction(df.pip$lod, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='blue', add=TRUE, lwd = 2)
+
+pred <- prediction(df.pip$mofa, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='orange', lwd = 2, add = TRUE)
+
+pred <- prediction(df.pip$noimp, df.pip$true)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, col='black', lwd = 2, add = TRUE)
+
+abline(v = 0.05, col = 'red', lty = 2, lwd = 2)
+
+legend("bottomright",c('gEBMF','MOFA2', 'SoftImpute', "missXGB", 'missForest', "KNN", "MeanImpute",'LOD', 'NoImpute'),col=c("#F8766D", 'orange', "#B79F00", "#53B400",  "#00BFC4",  "#619CFF",  "#F564E3",  'blue', 'black'),lwd=2, cex = 0.6)
+```
+
+
+We also plot the coverage for each method. The coverage is defind as 1 - FDR (False Discovery Rate). 
+```{r, eval=FALSE}
+fdr <- c(ebmf.FP/(ebmf.FP+ebmf.TP), mofa.FP/(mofa.FP+mofa.TP), soft.FP/(soft.FP+soft.TP),
+         xgb.FP/(xgb.FP+xgb.TP), rf.FP/(rf.FP+rf.TP), knn.FP/(knn.FP+knn.TP),
+         mean.FP/(mean.FP+mean.TP), lod.FP/(lod.FP+lod.TP), noimp.FP/(noimp.FP+noimp.TP))
+coverage1 <- 1 - fdr
+method <- c('gEBMF','MOFA2', 'SoftImpute', "missXGB", 'missForest', "KNN", "MeanImpute",'LOD', 'NoImpute')
+df$method <- factor(df$method, levels = c('gEBMF', 'MOFA2', "SoftImpute", "missXGB", 'missForest', "KNN", "MeanImpute", 'LOD', 'NoImpute'))
+custom_colors <- c("gEBMF" = "#F8766D", "SoftImpute" = "#B79F00", "MissXGB" = "#53B400", 'MissForest' = "#00BFC4", "KNN" = "#619CFF", "MeanImpute" = "#F564E3", 'LOD' = 'blue', 'NoImpute' = 'black', 'MOFA2' = 'orange')
+
+ggplot(df, aes(x = method, y = coverage, fill = method)) +
+  geom_bar(stat = 'identity') +
+  geom_hline(yintercept = 0.95, linetype = 'dashed', color = 'red') +
+  coord_cartesian(ylim = c(0.75, 1)) +
+  scale_fill_manual(values = custom_colors) +
+  labs(title = 'Coverage',
+       x = 'Method',
+       y = 'Coverage') +
+  scale_x_discrete(guide = guide_axis(angle=60)) +
+  theme_minimal()
+```
+
+
+### Example Output
+
+- PR/ROC curves
+
+![](figure/knight_pr_roc.png){width="60%"}
+- Coverage
+
+![](figure/knight-coverage.png){width="60%"}
+
+
+

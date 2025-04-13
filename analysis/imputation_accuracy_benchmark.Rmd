@@ -341,7 +341,7 @@ boxnrmse <- res_features[,boxplot.stats(NRMSE)$stats,by='method']
 boxnmae <- res_features[,boxplot.stats(NMAE)$stats,by='method'] 
 ```
 
-### 6. Plotting Results
+### Plotting Results
 
 Fianlly, we visualize the performance metrics for comparison.
 
@@ -352,6 +352,8 @@ get_legend<-function(myggplot){
   legend <- tmp$grobs[[leg]]
   return(legend)
 }
+
+custom_colors <- c("gEBMF" = "#F8766D", "SoftImpute" = "#B79F00", "MissXGB" = "#53B400", 'MissForest' = "#00BFC4", "KNN" = "#619CFF", "MeanImpute" = "#F564E3", 'LOD' = 'blue', 'NoImpute' = 'black', 'MOFA2' = 'orange')
 ```
 
 ```{r, eval=FALSE}

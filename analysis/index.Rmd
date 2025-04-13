@@ -13,6 +13,8 @@ See [here][paper-link] for the paper.
 
 + [Compare imputation accuracy on different methods for omics data](imputation_accuracy_benchmark.html)
 
++ [Compare QTL performance on different methods for simulated omics data](qtl_simulation.html)
+
 
 
 [paper-link]: https://www.medrxiv.org/content/10.1101/2023.11.29.23299181v1
