@@ -6,15 +6,17 @@ output: workflowr::wflow_html
 
 This website documents analysis for the paper titled `Refined Approaches for Missing Data Imputation Enhance Quantitative Trait Loci Discovery in Multi-Omics Analysis`. 
 
-See [here][paper-link] for the paper. 
+See [here](https://www.medrxiv.org/content/10.1101/2023.11.29.23299181v1) for the paper. 
 
 
 **Analyses:**
 
-+ [Compare imputation accuracy on different methods for omics data](imputation_accuracy_benchmark.html)
++ [Compare imputation accuracy for different methods on omics data](imputation_accuracy_benchmark.html)
 
-+ [Compare QTL performance on different methods for simulated omics data](qtl_simulation.html)
++ [Compare QTL performance for different methods on simulated data](qtl_simulation.html)
+
++ [Compare QTL performance for different methods on real omics data](real_data_xqtl.html)
+
++ [Compare QTL performance for different methods based on xQTL replication](xqtl_replication.html)
 
 
-
-[paper-link]: https://www.medrxiv.org/content/10.1101/2023.11.29.23299181v1

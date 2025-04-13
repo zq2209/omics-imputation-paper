@@ -1,0 +1,183 @@
+---
+title: "xQTL Analysis on Real Data"
+author: "Zining Qi"
+output: workflowr::wflow_html
+---
+
+This page documents the procedures for xQTL analysis on real data, including:
+
+- Phenotype processing
+
+- Genotype PCA processing
+
+- Covariates processing
+
+- Cis association analysis with TensorQTL
+
+For detailed protocol, refer to [FunGen-xQTL Computational Protocol](https://github.com/StatFunGen/xqtl-protocol), which is molecular QTL analyses for the NIH/NIA Alzheimer's Disease Sequencing Project (ADSP) Functional Genomics xQTL (FunGen-xQTL) Project.
+
+The pipelines in this protocol are written in the [Script of Scripts (SoS)](https://vatlab.github.io/sos-docs/) workflow language. SoS can distribute and run jobs directly on high-performance computing (HPC) clusters. 
+
+phenotype data for this analysis is [ROSMAP Proteomics](https://www.nature.com/articles/s41591-020-0815-6#Abs1) from DLPFC region. 
+
+### Phenotype Processing
+
+Data Input:
+
+- Processed phenotype data from ROSMAP DLPFC subjects: combine_r1andr2_protein.reg_cov_cog.uniq.proj.csv
+
+- Sample metadata: sampleSheetAfterQc.csv
+
+- Gene annotation file: Homo_sapiens.GRCh38.103.chr.reformatted.collapse_only.gene.gtf
+
+
+First, we annotate each protein with chromosome, start, end positions and gene ID.
+
+```{bash, eval=FALSE}
+sos run xqtl-protocol/pipeline/gene_annotation.ipynb annotate_coord_protein \
+    --cwd proteomics/rosmap/pheno \
+    --phenoFile combine_r1andr2_protein.reg_cov_cog.uniq.proj.csv \
+    --annotation-gtf Homo_sapiens.GRCh38.103.chr.reformatted.collapse_only.gene.gtf \
+    --container containers/rna_quantification.sif \
+    --phenotype-id-type gene_name \
+    --sample-participant-lookup sampleSheetAfterQC.txt
+```
+
+Then, we impute the phenotype data by using each method. Refer to Section `Impute Dataset with Generated Missing by Using Different Methods` in [imputation accuracy benchmark](https://zq2209.github.io/omics-imputation-paper/imputation_accuracy_benchmark.html) for details on how to impute missing data. The output of imputation is `rosmap_pheno_imp.bed.gz`.
+
+We then split the imputed phenotype data by chromosome to be meet the required format of the pipeline. 
+
+```{python, eval=FALSE}
+for i, g in pheno.groupby('#chr'):
+    g.to_csv(f'rosmap/pheno/rosmap_pheno_{i}.bed', index=None, sep='\t')
+```
+
+
+```{bash, eval=FALSE}
+# Compress and index
+bgzip rosmap/pheno/*.bed
+tabix rosmap/pheno/*.bed.gz
+```  
+
+
+### Genotype PCA Processing
+
+Data Input:
+
+- Genotype files:
+
+  - ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.bed
+
+  - ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.bim
+
+  - ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.fam
+  
+
+Before getting PCs from genotype data, we match samples to identify samples present in both genotype and phenotype data.
+
+```{bash, eval=FALSE}
+sos run xqtl-protocol/pipeline/GWAS_QC.ipynb genotype_phenotype_sample_overlap \
+    --cwd /rosmap/geno \
+    --phenoFile /rosmap/pheno/rosmap_pheno_imp.bed.gz \
+    --genoFile ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.fam \
+    --container containers/bioinfo.sif 
+```
+
+Then, we filter out related samples using `Kingship`. 
+
+```{bash, eval=FALSE}
+sos run xqtl-protocol/pipeline/GWAS_QC.ipynb king \
+    --cwd /rosmap/geno \
+    --genoFile ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.bed \
+    --name pQTL \
+    --keep-samples /rosmap/geno/rosmap_pheno.sample_genotypes.txt \
+    --container containers/bioinfo.sif --no-maximize-unrelated
+```
+
+To further quality control genotype data, we filter variants with MAC < 5 and perform LD pruning.
+
+```{bash, eval=FALSE}
+sos run xqtl-protocol/pipeline/GWAS_QC.ipynb qc \
+    --cwd rosmap/geno \
+    --genoFile ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.bed \
+    --keep-samples /rosmap/geno/rosmap_pheno.sample_genotypes.txt \
+    --mac-filter 5 \
+    --container containers/bioinfo.sif
+```
+
+
+After all QC steps, we perform PCA on pruned genotype data to generate genetic covariates.
+
+```{bash, eval=FALSE}
+sos run xqtl-protocol/pipeline/PCA.ipynb flashpca \
+    --cwd /rosmap/pca \
+    --genoFile ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.plink_qc.prune.bed \
+    --container containers/flashpcaR.sif
+```
+
+### Covariates Preprocessing
+
+Data Input: 
+
+- Imputed phenotype data: `rosmap_pheno_imp.bed.gz`
+
+- Genotype PCs from `Genotype PCA Processing`
+
+- Known covariates: sex, age at death, PMI in `rosmap_cov.txt`
+
+We first combine known covariates with genotype PCs.
+
+```{bash, eval=FALSE}
+sos run xqtl-pipeline/pipeline/covariate_formatting.ipynb merge_genotype_pc \
+    --cwd ./rosmap/cov \
+    --pcaFile ./rosmap/pca/ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.plink_qc.prune.pca.rds \
+    --covFile ./rosmap/cov/rosmap_cov.txt \
+    --tol_cov 0.4 \
+    --k `awk '$3 < 0.7' ./rosmap/pca/ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.plink_qc.prune.pca.scree.txt | tail -1 | cut -f 1` \
+    --container ./bioinfo.sif
+```
+
+Then, we identify hidden factors (i.e. batch effects) using PCA. The number of hidden factors is determined by Marchenko-Pastur method. And the residual after regressing out all covariates (known covariates, genotype PCs, hidden factors) is calculated. 
+
+```{bash, eval=FALSE}
+sos run xqtl-pipeline/pipeline/covariate_hidden_factor.ipynb Marchenko_PC \
+    --cwd ./rosmap/cov \
+    --phenoFile ./rosmap/pheno/rosmap_pheno_imp.bed.gz \
+    --container ./PCAtools.sif \
+    --covFile ./rosmap/cov/rosmap_cov.ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.plink_qc.prune.pca.gz
+```
+
+### Cis Association Analysis with TensorQTL
+
+Data Input: 
+- Genotype: `ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.plink_files_list.txt`
+
+- Phenotype: `rosmap/rosmap_pheno_imp.txt`
+
+- Covariates: Output from `Covariates Processing`
+
+ - Custom cis-window (TAD Window): `TAD_TADB/extended_cis_before_winsorize.tsv`
+
+```{bash, eval=FALSE}
+sos run xqtl-protocol/pipeline/TensorQTL.ipynb cis \
+    --genotype-file ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.plink_files_list.txt \
+    --phenotype-file rosmap/rosmap_pheno_imp.txt \
+    --covariate-file rosmap/cov/rosmap_pheno.rosmap_cov.ROSMAP_NIA_WGS.leftnorm.bcftools_qc.plink_qc.pQTL.unrelated.filtered.prune.pca.resid.Marchenko_pc.gz \
+    --customized_cis_list TAD_TADB/extended_cis_before_winsorize.tsv \
+    --cwd pQTL_cis/TADB \
+    --container containers/TensorQTL.sif --MAC 5
+```
+
+Finally, we extract the number of QTL detected. 
+
+
+```{bash, eval=FALSE}
+cat pheno_recipe_rosmap_pheno.rosmap_cov.ROSMAP_NIA_WGS.leftnorm.filtered.pQTL.unrelated.filtered.prune.pca.resid.Marchenko_pc.1.n_sig.txt
+```
+
+
+This whole procedure is applied to all 8 imputed ROSMAP phenotype data by using 8 imputation methods. The numbers of QTL significant genes are used to compare performance of each method. 
+
+
+
+
