@@ -18,7 +18,7 @@ For detailed protocol, refer to [FunGen-xQTL Computational Protocol](https://git
 
 The pipelines in this protocol are written in the [Script of Scripts (SoS)](https://vatlab.github.io/sos-docs/) workflow language. SoS can distribute and run jobs directly on high-performance computing (HPC) clusters. 
 
-phenotype data for this analysis is [ROSMAP Proteomics](https://www.nature.com/articles/s41591-020-0815-6#Abs1) from DLPFC region. 
+Phenotype data for this analysis is [ROSMAP Proteomics](https://www.nature.com/articles/s41591-020-0815-6#Abs1) from DLPFC region. 
 
 ### Phenotype Processing
 
