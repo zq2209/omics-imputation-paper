@@ -360,7 +360,7 @@ for (i in 1:nrow(pheno.miss)) {
 
 The imputed phenotype for QTL analysis includes number of imputed samples (i.e. n_miss = 50, 100, 150) plus randomly selected 350-n_miss samples from the existing samples.
 
-```{r}
+```{r, eval=FALSE}
 for (mtd in c("ebmf", "mofa", "xgb", "rf", "soft", "knn", "mean", "lod")) {
     pheno.imp <- read_delim(paste0('strategy2/rosmap_pheno_', mtd, '_imp.bed.gz'))
     
