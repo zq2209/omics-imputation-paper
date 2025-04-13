@@ -1,0 +1,394 @@
+---
+title: "Compare imputation accuracy on different methods for omics data"
+author: "Zining Qi"
+output: workflowr::wflow_html
+---
+
+This page performs a benchmark comparison of different imputation methods (EBMF, MOFA2, softImpute, missXGB, missForest, KNN, and MeanImpute) for missing data in omics data. The script calculates and visualizes three key metrics: Normalized Root Mean Square Error (NRMSE), Normalized Mean Absolute Error (NMAE), and R-Square.
+
+
+### Setup and Initial Data Loading
+
+First, load the packages needed for this analysis and the original phenotype data.
+
+```{r, eval=FALSE}
+library(tidyverse)
+library(data.table)
+library(pheatmap)
+library(gridExtra)
+
+phenotype <- read_delim('knight_QCed.bed.gz') # Example dataset
+```
+
+The `phenotype` should be a dataset in which rows are features (i.e. proteins, CpG sites, metabolites) and columns are samples.
+
+
+### Adding Additional Missing Values
+
+Then, introduce random missing values to the dataset for benchmarking.
+
+```{r, eval=FALSE}
+# Function of adding random missing up to 50%
+source('code/random_missing_generation.R')
+
+# Assign additional missing to orginal matrix
+missing <- 0.5
+pheno_add_NAs <- pheno[, -c(1:4)] # get rid of first four columns of matrix, chr, start, end , and ID
+mat_na <- add_missing_values(pheno_add_NAs, missing = missing)
+mat_na <- as.data.frame(mat_na)
+# write_delim(cbind(pheno[, 1:4], pheno_NAs), 'knight_to_impute.bed.gz', delim = '\t')
+```
+
+Additionally, to have more realistic pattern of missing, we also introduce realistic missing to omics data for bechmarking. 
+
+```{r, eval=FALSE}
+source('codes/R/realistic_missing_generation.R')
+
+samples <- colnames(pheno)[-c(1:4)]
+
+# remove features with more than\>50% missingness
+pheno[ , pct.na:=rowSums(is.na(.SD))/length(samples),.SDcols=samples]
+pheno <- pheno[pct.na<0.5] 
+```
+
+In this realistic missing generation, a masking strategy is used: instead of generating missing at a certain probability p in each cluster, p is used to pick the best row/column in the reference missing data as a mask to generate the missing. It allows to better capture the real missing pattern.  
+
+```{r, eval=FALSE}
+mat <- as.matrix(data.frame(pheno[,.SD,.SDcols=c('ID',samples)],row.names = 'ID'))
+
+# apply missing Pattern on lowly missing matrix 
+# until reach the %missingness of the observed matrix
+observed.missrate <- sum(is.na(mat))/length(mat)
+
+features_lo <- pheno[pct.na<0.05]$ID
+length(features_lo)
+mat_lo <- as.matrix(data.frame(pheno[,.SD,.SDcols=c('ID',samples)],row.names = 'ID')[features_lo,])
+
+
+mat_na <- ApplyMissingPattern2(query = mat_lo,reference = mat,
+                             missrate.threshold = observed.missrate,n_threads = n_threads)
+```
+
+
+Check the new simulated missingness compared to the real one
+
+```{r, eval=FALSE}
+print(paste('observed missing rate: ',round(observed.missrate*100,digits = 2)))
+
+sim.missrate <- sum(is.na(mat_na))/length(mat_na)
+print(paste('simulated missing rate: ', round(sim.missrate*100,digits = 2)))
+
+SimNas <- is.na(mat_na)!=is.na(mat_lo[rownames(mat_na),colnames(mat_na)])
+ShowNAPattern(SimNas, main = 'Generated NA Pattern')
+
+RealNas <- is.na(mat)
+ShowNAPattern(RealNas, main = 'Real NA Pattern')
+```
+
+Save the simulated matrix for subsequent imputation benchmarking
+
+```{r, eval=FALSE}
+fwrite(data.table(mat_na,keep.rownames = 'ID'),
+       'Knight_realistic_missing_simulated.csv.gz')
+```
+
+
+### Extracting Missing Entries for Benchmarking
+
+Extract entries where values are missing in the modified dataset but present in the original dataset (these will serve as the ground truth for benchmarking).
+
+```{r, eval=FALSE}
+rownames(mat_na) <- pheno$ID
+
+Xna <- as.matrix(mat_na)
+Xcomp <- as.matrix(pheno[, -c(1:4)])
+
+rownames(Xna) <- pheno$ID
+rownames(Xcomp) <- pheno$ID
+
+NAloc1 = is.na(Xcomp)
+NAloc2 = is.na(Xna)
+NAtoUse = NAloc1 == FALSE & NAloc2 == TRUE
+
+# Extract a table that only have entries will be used for benchmark, true value
+tobeimputed <- data.table(ID=rownames(Xcomp)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id=colnames(Xcomp)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       true=Xcomp[NAtoUse])
+```
+
+
+### Impute Dataset with Generated Missing by Using Different Methods
+
+##### Impute missing data by using EBMF/gEBMF
+
+```{r, eval=FALSE}
+source('code/EBMF.R')
+
+# Impute with EBMF
+Ximp.ebmf <- EBMFimp(mat_na)
+# Impute with gEBMF
+Ximp.ebmf <- gEBMF(mat_na)
+```
+
+##### Impute missing data by using MOFA2
+
+The first step need to train a MOFA model, which we recommend using python to do this. Please ensure to install mofapy2 by using `pip install mofapy2`.
+
+Here is the python script of trainning the model, the first three columns of the input are chr, start, end, and ID. 
+
+```{python, eval=FALSE}
+from mofapy2.run.entry_point import entry_point
+import pandas as pd
+import os
+## Force the number of threads used in numpy.
+os.environ["OMP_NUM_THREADS"] = "8" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "8" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "8" # export MKL_NUM_THREADS=6
+import numpy as np
+## Data
+data = pd.read_csv('Knight_to_impute.bed.gz',"\t",index_col = 3).drop(["#chr","start","end"],axis = 1)
+# initialise the entry point
+ent = entry_point()
+# Guess number of factor
+# Suggest the number of factors to use if no input value
+num_factor = 0
+if num_factor == 0:
+    if len(data.columns) < 150:
+        num_factor = 15
+    elif len(data.columns) < 250:
+        num_factor = 30
+    elif len(data.columns) < 350:
+        num_factor = 45
+    else:
+        num_factor = 60
+# Set data
+# MOFA is a multi-view and multi-group inference framework. 
+# If usig only a single view and a single group (as in PEER), the data needs to be embedded into a nested list
+ent.set_data_matrix([[data.transpose()]],samples_names=[data.columns.values.tolist()], features_names=[data.index.values.tolist()])
+ent.set_model_options(factors= num_factor , spikeslab_weights=False, ard_weights=False) # num_factor could be adjusted
+ent.set_train_options(iter=1000, convergence_mode="fast" , gpu_mode=False, verbose=True, startELBO=1, freqELBO=1,tolerance=0.001, seed=42)
+ent.build()
+ent.run()
+ent.save('knight_model.hd5')
+## To fix issue https://github.com/cumc/xqtl-pipeline/issues/420
+import h5py
+right_name = [x.encode("UTF-8") for x in  ent.data_opts["features_names"][0]] 
+new_hd5 = h5py.File('knight_model.hd5', "r+")
+del new_hd5["features/view0"]
+new_hd5["features"].create_dataset("view0", data=np.array(right_name))
+new_hd5.close()
+```
+
+After this step, a hd5 file will be generated and saved to your working dictionary. Then, impute the missing data by using this model in R.
+
+```{r, eval=FALSE}
+# load mofa model
+file <- "knight_model.hd5"
+model <- load_model(file)
+
+# Impute missing values in all data modalities
+imputed_data <- impute(model, views = "all")
+impute <- get_imputed_data(imputed_data)
+#df <- get_data(imputed_data, as.data.frame = T)
+Ximp.mofa <- impute[["view0"]]$group0
+#colnames(Ximp.mofa) <- colnames(pheno_NAs)
+```
+
+##### Impute missing data by using softImpute
+
+```{r, eval=FALSE}
+source('code/soft_imp.R')
+
+# Impute with softImpute
+Ximp.soft <- soft_imputation(mat_na)
+```
+
+##### Impute missing data by using missXGB
+
+```{r, eval=FALSE}
+source('code/xgb_imp.R')
+
+# Impute with softImpute
+Ximp.xgb <- xgboost_imputation(mat_na)
+```
+
+##### Impute missing data by using missForest
+
+```{r, eval=FALSE}
+source('code/rf_imp.R')
+
+# Impute with softImpute
+Ximp.rf <- missForest(as.matrix(mat_na), parallelize = 'variables')$ximp
+```
+
+##### Impute missing data by using KNN
+
+```{r, eval=FALSE}
+source('code/knn_imp.R')
+
+# Impute with softImpute
+Ximp.knn <- knn_imputation(mat_na)
+```
+
+##### Impute missing data by using MeanImpute
+
+```{r, eval=FALSE}
+source('code/mean_imp.R')
+
+# Impute with softImpute
+Ximp.mean <- mean_imputation(mat_na)
+```
+
+##### Impute missing data by using LodImpute
+
+```{r, eval=FALSE}
+source('code/lod_imp.R')
+
+# Impute with softImpute
+Ximp.lod <- lod_imputation(mat_na)
+```
+
+### Extracting Imputed Values
+
+For each method,Load imputed datasets and extract values corresponding to the benchmark entries.
+
+```{r, eval=FALSE}
+# Extract imputed values
+ebmf.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.ebmf[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+
+mofa.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.mofa[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+
+soft.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.soft[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+
+xgb.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.xgb[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+
+rf.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.rf[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+
+knn.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.knn[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+
+mean.imp <- data.table(ID = rownames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'row']],
+                       sample_id = colnames(NAtoUse)[which(NAtoUse,arr.ind=TRUE)[,'col']],
+                       imputation = Ximp.mean[rownames(NAtoUse),colnames(NAtoUse)][NAtoUse])
+```
+
+### Calculating Performance Metrics
+
+Then, compute feature-wise NRMSE, NMAE, and R-square to evaluate imputation performance for each method. First is to merge missing entries for different imputation.
+
+```{r, eval=FALSE}
+# Merge missing entries for different imputation
+imput <- rbindlist(list(ebmf.imp[,method:='EBMF'],
+                      mofa.imp[,method:='MOFA2'],
+                      soft.imp[,method:='SoftImpute'],
+                      xgb.imp[,method:='missXGB'],
+                      rf.imp[,method:='missForest'],
+                      knn.imp[,method:='KNN'],
+                      mean.imp[,method:='MeanImpute']),fill = T)
+
+imput <- merge(imput, tobeimputed)
+```
+
+After merging, we calculate performance of each method. 
+
+```{r, eval=FALSE}
+# calculate sd and range from original dataset
+pheno <- fread('knight_QCed.bed.gz')
+samples <- colnames(pheno)[-(1:4)]
+pheno[,pct.na:=rowSums(is.na(.SD))/length(samples),.SDcols=samples]
+pheno <- pheno[pct.na<0.5]
+
+pheno[,sd:=apply(.SD,1,sd,na.rm=T),.SDcols=samples]
+pheno[,range:=apply(.SD,1,function(x)max(x,na.rm=T)-min(x,na.rm=T)),.SDcols=samples]
+rownames(pheno) <- pheno$ID
+#calc Perf
+imput[,error:=imputation-true]
+
+imput[,mae:=mean(abs(error)),by=c('method')]
+imput[,mse:=mean(error^2),by=c('method')]
+
+imput[,nmae:=mae/(max(true)-min(true)),by=c('method')]
+imput[,nmse:=mse/var(true),by=c('method')]
+imput[,r2:=cor(imputation,true)^2,by=c('method')]
+
+#by feature normalization
+imput[,nmae_feature:=mean(abs(error))/(max(true)-min(true)),by=c('ID','method')]
+imput[,nmse_feature:=mean(error^2)/var(true),by=c('ID','method')]
+imput[,r2_feature:=cor(imputation,true)^2,by=c('ID','method')]
+
+imput[,mae_feature:=mean(abs(error)),by=c('ID','method')]
+imput[,mse_feature:=mean(error^2),by=c('ID','method')]
+imput[,r2_feature:=cor(imputation,true)^2,by=c('ID','method')]
+res_features <- unique(imput,by=c('ID','method'))
+res_features <- merge(res_features,pheno[,.(ID,sd,range)], by = 'ID')
+
+res_features[,NRMSE:=sqrt(mse_feature)/sd]
+res_features[,NMAE:=mae_feature/range]
+
+
+boxnrmse <- res_features[,boxplot.stats(NRMSE)$stats,by='method'] 
+boxnmae <- res_features[,boxplot.stats(NMAE)$stats,by='method'] 
+```
+
+### 6. Plotting Results
+
+Fianlly, we visualize the performance metrics for comparison.
+
+```{r, eval=FALSE}
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+```
+
+```{r, eval=FALSE}
+p1 <- ggplot(res_features)+
+  geom_boxplot(aes(x=method,y=NRMSE,fill=method),outlier.shape = NA) +
+  coord_cartesian(ylim = range(boxnrmse$V1))+
+  #scale_fill_manual(values=custom_colors, labels = c("FLASH", "SoftImpute", "missXGB", "missForest", "KNN", "MeanImpute", "MOFA2")) +
+  theme_light()+
+  theme(axis.text.x = element_blank()) + 
+  scale_x_discrete(guide = guide_axis(angle=60)) +ggtitle('NRMSE')
+
+legend <- get_legend(p1)
+
+p2 <- ggplot(res_features)+
+  geom_boxplot(aes(x=method,y=NMAE,fill=method),outlier.shape = NA) +
+  coord_cartesian(ylim = range(boxnmae$V1))+
+  #scale_fill_manual(values=custom_colors)+
+  theme_light()+
+  theme(legend.position = "none", axis.text.x = element_blank()) +
+  scale_x_discrete(guide = guide_axis(angle=60))  +ggtitle('NMAE')
+
+p3<-ggplot(res_features)+
+  geom_boxplot(aes(x=method,y=r2_cpg,fill=method),outlier.shape = NA) +
+  coord_cartesian(ylim = c(0, 1))+
+  theme_light()+
+  theme(legend.position = "none", axis.text.x = element_blank()) +
+  scale_x_discrete(guide = guide_axis(angle=60)) +ggtitle('R-Square') +
+  #scale_fill_manual(values = custom_colors) +
+  labs(y = 'R-Square')
+
+p1 <- p1 + theme(legend.position="none")
+# Arrange ggplot2 graphs with a specific width
+grid.arrange(p1, p2, p3, legend, ncol=4, widths=c(2.3, 2.3, 2.3, 0.8))
+```
+
+### Example Output
+
+![](figure/random-knight_metric.png){width="60%"}
+
+

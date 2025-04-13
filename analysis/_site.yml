@@ -1,0 +1,17 @@
+name: Missing Data Imputation for Multi-Omics Data
+output_dir: ../docs
+navbar:
+  title: Missing Data Imputation for Multi-Omics Data
+  left:
+    - text: Overview
+      href: index.html
+  right:
+    - text: source
+      href: https://github.com/zq2209/omics-imputation-paper
+output:
+  workflowr::wflow_html:
+    toc: no
+    theme: readable
+    highlight: textmate
+    lib_dir: site_libs
+    self_contained: no
