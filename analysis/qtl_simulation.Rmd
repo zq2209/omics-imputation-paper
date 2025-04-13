@@ -440,7 +440,7 @@ ggplot(df, aes(x = method, y = coverage, fill = method)) +
 
 - Coverage
 
-![](figure/knight-coverage.png){width="60%"}
+![](figure/knight-coverage.png){width="30%"}
 
 
 
