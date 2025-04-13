@@ -286,7 +286,7 @@ sum(sapply((1:length(noimp.susie.result)), function(x){(length(which(noimp.susie
 
 The SuSiE fine-mapping is also applied to imputed phenotype. The following is an example for EBMF imputed phenotype. This step will be repeated for each method. 
 
-```{r}
+```{r, eval=FALSE}
 ebmf.susie.result <- NULL
 ebmf.susie.pip <- NULL
 

@@ -433,15 +433,15 @@ project makes it easier to run your code on other machines.</p>
 <div class="panel panel-default">
 <div class="panel-heading">
 <p class="panel-title">
-<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomzq2209omicsimputationpapertreea394ac0319af2a7f66b81b06deb1aa58be3aeeb1targetblanka394ac0a">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomzq2209omicsimputationpapertree7706bf2a4098b61135c0ae9082645d1ac59b97d1targetblank7706bf2a">
 <span class="glyphicon glyphicon-ok text-success"
 aria-hidden="true"></span> <strong>Repository version:</strong>
-<a href="https://github.com/zq2209/omics-imputation-paper/tree/a394ac0319af2a7f66b81b06deb1aa58be3aeeb1" target="_blank">a394ac0</a>
+<a href="https://github.com/zq2209/omics-imputation-paper/tree/7706bf2a4098b61135c0ae9082645d1ac59b97d1" target="_blank">7706bf2</a>
 </a>
 </p>
 </div>
 <div
-id="strongRepositoryversionstrongahrefhttpsgithubcomzq2209omicsimputationpapertreea394ac0319af2a7f66b81b06deb1aa58be3aeeb1targetblanka394ac0a"
+id="strongRepositoryversionstrongahrefhttpsgithubcomzq2209omicsimputationpapertree7706bf2a4098b61135c0ae9082645d1ac59b97d1targetblank7706bf2a"
 class="panel-collapse collapse">
 <div class="panel-body">
 <p>
@@ -451,7 +451,7 @@ reproducibility.
 </p>
 <p>
 The results in this page were generated with repository version
-<a href="https://github.com/zq2209/omics-imputation-paper/tree/a394ac0319af2a7f66b81b06deb1aa58be3aeeb1" target="_blank">a394ac0</a>.
+<a href="https://github.com/zq2209/omics-imputation-paper/tree/7706bf2a4098b61135c0ae9082645d1ac59b97d1" target="_blank">7706bf2</a>.
 See the <em>Past versions</em> tab to see a history of the changes made
 to the R Markdown and HTML files.
 </p>
@@ -467,9 +467,6 @@ were generated:
 <pre><code>
 Ignored files:
     Ignored:    .Rproj.user/
-
-Untracked files:
-    Untracked:  .gitignore
 
 </code></pre>
 <p>
@@ -515,6 +512,40 @@ Message
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+Rmd
+</td>
+<td>
+<a href="https://github.com/zq2209/omics-imputation-paper/blob/7706bf2a4098b61135c0ae9082645d1ac59b97d1/analysis/imputation_accuracy_benchmark.Rmd" target="_blank">7706bf2</a>
+</td>
+<td>
+“John
+</td>
+<td>
+2025-04-12
+</td>
+<td>
+updates
+</td>
+</tr>
+<tr>
+<td>
+html
+</td>
+<td>
+<a href="https://rawcdn.githack.com/zq2209/omics-imputation-paper/af386c31e113feb165e912253ea9e95a2ccbf67f/docs/imputation_accuracy_benchmark.html" target="_blank">af386c3</a>
+</td>
+<td>
+“John
+</td>
+<td>
+2025-04-12
+</td>
+<td>
+Build site.
+</td>
+</tr>
 <tr>
 <td>
 Rmd
@@ -861,14 +892,16 @@ boxnrmse &lt;- res_features[,boxplot.stats(NRMSE)$stats,by=&#39;method&#39;]
 boxnmae &lt;- res_features[,boxplot.stats(NMAE)$stats,by=&#39;method&#39;] </code></pre>
 </div>
 <div id="plotting-results" class="section level3">
-<h3>6. Plotting Results</h3>
+<h3>Plotting Results</h3>
 <p>Fianlly, we visualize the performance metrics for comparison.</p>
 <pre class="r"><code>get_legend&lt;-function(myggplot){
   tmp &lt;- ggplot_gtable(ggplot_build(myggplot))
   leg &lt;- which(sapply(tmp$grobs, function(x) x$name) == &quot;guide-box&quot;)
   legend &lt;- tmp$grobs[[leg]]
   return(legend)
-}</code></pre>
+}
+
+custom_colors &lt;- c(&quot;gEBMF&quot; = &quot;#F8766D&quot;, &quot;SoftImpute&quot; = &quot;#B79F00&quot;, &quot;MissXGB&quot; = &quot;#53B400&quot;, &#39;MissForest&#39; = &quot;#00BFC4&quot;, &quot;KNN&quot; = &quot;#619CFF&quot;, &quot;MeanImpute&quot; = &quot;#F564E3&quot;, &#39;LOD&#39; = &#39;blue&#39;, &#39;NoImpute&#39; = &#39;black&#39;, &#39;MOFA2&#39; = &#39;orange&#39;)</code></pre>
 <pre class="r"><code>p1 &lt;- ggplot(res_features)+
   geom_boxplot(aes(x=method,y=NRMSE,fill=method),outlier.shape = NA) +
   coord_cartesian(ylim = range(boxnrmse$V1))+
