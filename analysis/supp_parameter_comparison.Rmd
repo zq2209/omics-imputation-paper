@@ -138,7 +138,7 @@ p3 <- ggplot(res_flash_factors1) +
 grid.arrange(p1, p2, p3, ncol = 3)
 ```
 
-![](figure/ebmf_factors.png){width="60%"}
+![](figure/ebmf_factors.png){width="90%"}
 
 
 ##### Benchmarking Different Priors
@@ -223,7 +223,7 @@ p3 <- ggplot(res_flash_priors) +
 grid.arrange(p1, p2, p3, ncol = 3)
 ```
 
-![](figure/ebmf_priors.png){width="60%"}
+![](figure/ebmf_priors.png){width="90%"}
 
 ### softImpute Benchmarking
 
@@ -297,5 +297,5 @@ grid.arrange(p1, p2, p3, legend, ncol = 4, widths = c(2.3, 2.3, 2.3, 0.8))
 ```
 
 
-![](figure/softimpute_paras.png){width="60%"}
+![](figure/softimpute_paras.png){width="90%"}
 
