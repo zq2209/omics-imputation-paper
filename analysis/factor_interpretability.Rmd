@@ -1,6 +1,234 @@
 ---
 title: "Factor Interpretability Analysis on gEBMF"
-author: "Zining Qi"
+author: "Zining Qi, Alexandre Pelletier"
 output: workflowr::wflow_html
 ---
+
+
+This analysis aims to evaluate and compare two dimensionality reduction methods - generalized Empirical Bayes Matrix Factorization (gEBMF) and Principal Component Analysis (PCA) - for interpreting omics data (i.e. methylation). The primary objective is to determine which method better captures known biological and technical variation in the data. By systematically assessing how factors from each method associate with clinical variables (age, sex, AD diagnosis) and technical covariates (batch effects, processing variables), we can make informed decisions about which dimensionality reduction approach is most suitable for downstream analyses. The results will help us understand whether the more sophisticated gEBMF method provides meaningful advantages over traditional PCA for omics data interpretation.
+
+# Setup and Initialization
+
+```{r, eval=FALSE}
+# Create output directory for results
+out <- 'methylation/outputs/08-flashier_factors_interpretability'
+dir.create(out, recursive = TRUE, showWarnings = FALSE)
+
+# Load required packages
+library(tidyverse)
+library(data.table)
+library(flashier)
+library(knitr)
+
+# Source utility functions
+source('code/r_utils.R')
+source('code/pca_utils.R')
+```
+
+### Data Preparation
+
+##### Load and Process Metadata
+
+We start by reading three key metadata files: clinical data containing participant characteristics and diagnoses, biospecimen information about sample collection and processing, and methylation-specific technical metadata. These datasets are merged using specimen identifiers to create a comprehensive metadata table and filtered to include only samples with valid study information. 
+
+```{r, eval=FALSE}
+mtd_clin <- fread('../ref-data/ROSMAP/ROSMAP_clinical.csv')
+mtd_bio <- fread('../ref-data/ROSMAP/ROSMAP_biospecimen_metadata.csv')
+mtd_meth <- fread('../ref-data/ROSMAP/ROSMAP_assay_methylationArray_metadata.csv')
+
+mtd <- merge(mtd_clin, 
+             mtd_bio[assay == 'methylationArray' & individualID != ''][, .(individualID, specimenID)])
+mtd <- merge(mtd, 
+             mtd_meth[, .(specimenID, batch, Sentrix_ID, Sentrix_Row_Column)], 
+             by = 'specimenID')
+
+mtdf <- mtd[Study != '']
+```
+
+ 
+
+##### Process Clinical Variables
+
+The clinical data processing step transforms raw variables into analysis-ready formats:
+
+- Age at death is converted to numeric values, with special handling for the "90+" category which is coded as 91. 
+
+- Study identifiers are converted to numeric factors for easier modeling. 
+
+- Sample IDs are standardized to ensure compatibility with R syntax. 
+
+- For Alzheimer's disease (AD) analysis:
+
+  - Raw cogdx scores, a binary dementia indicator
+  
+  - three-category AD status variable. 
+  
+  - APOE genotype, a major genetic risk factor for AD
+  
+  - Race
+  
+  - APOE4 carrier status variable. 
+
+```{r, eval=FALSE}
+mtdf[, age_death_num := as.numeric(ifelse(age_death == '90+', 91, age_death))]
+mtdf[, Study.num := as.numeric(factor(Study))]
+mtdf[, specimenID_corr := make.names(specimenID)]
+mtdf[, AD_status := cogdx]
+mtdf[, dementia := !cogdx %in% 1:3]
+mtdf[, apoe4_career := apoe_genotype %in% c(44, 34, 24)]
+mtdf[, apoe_genotype := factor(apoe_genotype, levels = c(22, 23, 24, 33, 34, 44))]
+mtdf[, apoe_genotype_num := as.numeric(apoe_genotype)]
+mtdf[, race_bin := race == 1]
+mtdf[, AD_status := sapply(cogdx, function(x) {
+  ifelse(x == 1, 1, ifelse(x %in% 2:3, 2, ifelse(x %in% 4:5, 3, NA)))
+}]
+```
+
+
+
+# Factor Analysis
+
+## Load gEBMF Factors
+
+The factor loadings (matrix F) from gEBMF analysis are extracted, which represent the weights of each factor across samples. We focus on the first 50 factors, which typically capture the majority of meaningful variation.
+
+```{r, eval=FALSE}
+fl <- readRDS('../fungen-xqtl-analysis/analysis/TCW_BU/ROSMAP/mqtl/outputs/01-ROSMAP_methylation_data_preprocessing/flashier_opti_factors.rds')
+plot(fl, main = "gEBMF Factor Analysis Results")
+ldf <- ldf(fl, type = 'f')
+fs_dt <- data.table(ldf$F[, 1:50], keep.rownames = 'specimenID_corr')
+setnames(fs_dt, old = paste0('V', 1:50), new = paste0('f', 1:50))
+fs_dt_melt <- melt(fs_dt, measure.vars = paste0('f', 1:50), 
+                   variable.name = 'factor', value.name = 'factor.value')
+fs_dt_melt <- merge(fs_dt_melt, data.table(factor = paste0('f', 1:50), ve = ldf$D[1:50]))
+```
+
+
+### Principal Component Analysis
+
+##### Load and Prepare Omics Data
+
+The omics data preparation involves several quality control steps, methylation as an example:
+
+- We first load the raw methylation beta values, which represent the proportion of methylated alleles at each CpG site. 
+
+- To ensure data quality, we remove CpG sites with excessive missing values (>50% missing across samples).
+
+- We exclude all probes on chromosome Y to avoid sex-specific artifacts. 
+
+- The remaining beta values are converted to a matrix format and transformed using the probit function (qnorm), which approximates a normal distribution better suited for linear analyses. 
+
+```{r, eval=FALSE}
+pheno <- read_delim('../fungen-xqtl-analysis/analysis/TCW_BU/ROSMAP/mqtl/outputs/01-ROSMAP_methylation_data_preprocessing/ROSMAP_assay_methylationArray_metadata.sesame.beta.bed.gz', 
+                   delim = '\t')
+pheno <- pheno[rowMeans(is.na(pheno[, 5:ncol(pheno)])) <= 0.5, ]
+pheno <- pheno[pheno$`#chr` != 'chrY', ]
+x <- as.matrix(data.frame(pheno[, 4:ncol(pheno)], row.names = 'ID'))
+x <- qnorm(x)
+```
+
+
+
+##### Perform PCA
+
+Principal Component Analysis is performed using a custom function that implements soft imputation for missing values. The analysis generates principal components that capture orthogonal directions of maximum variance in the methylation data. We extract the first 50 PCs, which typically account for the majority of biologically relevant variation. 
+
+```{r, eval=FALSE}
+pca <- RunPca(x, imputation = 'soft')
+pcs_dt <- data.table(pca$x[, 1:50], keep.rownames = 'specimenID_corr')
+pcs_dt_melt <- melt(pcs_dt, measure.vars = paste0('PC', 1:50), 
+                   variable.name = 'factor', value.name = 'factor.value')
+pcs_dt_melt <- merge(pcs_dt_melt, data.table(factor = paste0('PC', 1:50), 
+                     ve = pca$sdev[1:50]^2)
+```
+
+
+
+### Combined Analysis
+
+##### Merge Data Sources
+
+We stack the gEBMF factors and PCA components, adding a method identifier to distinguish their origins. This combined dataset is then joined with the processed clinical metadata, creating a comprehensive table linking each factor/PC score to all relevant covariates.
+
+```{r, eval=FALSE}
+factors <- rbind(
+  fs_dt_melt[, method := 'gEBMF'],
+  pcs_dt_melt[, method := 'PCA']
+)
+factors <- merge(factors, mtdf, by = 'specimenID_corr')
+factors <- melt(factors, 
+               measure.vars = c('age_death_num', 'Study.num', 'dementia', 'AD_status',
+                               'apoe4_career', 'apoe_genotype_num', 'race_bin',
+                               'spanish', 'braaksc', 'pmi', 'batch', 'msex'),
+               variable.name = 'known.cov', value.name = 'cov.value')
+factors <- factors[!is.na(cov.value)]
+factors[, cov.value := as.numeric(cov.value)]
+```
+
+
+##### Statistical Analysis
+
+The statistical analysis systematically evaluates associations between factors/PCs and covariates. For each combination, we fit a linear model and extract multiple metrics: R-squared (proportion of variance explained), regression coefficients (effect sizes), standard errors, p-values, and derived z-scores. These metrics provide complementary perspectives on the strength and significance of each association. We identify the top 10 most significant factors for each covariate-method combination, and extract factor numbers for visualization purposes.
+
+```{r, eval=FALSE}
+factors[, r2 := summary(lm(factor.value ~ cov.value))$adj.r.squared,
+        by = .(factor, known.cov, method)]
+factors[, beta := summary(lm(factor.value ~ cov.value))$coefficients[2, 1],
+        by = .(factor, known.cov, method)]
+factors[, beta_se := summary(lm(factor.value ~ cov.value))$coefficients[2, 2],
+        by = .(factor, known.cov, method)]
+factors[, pvalue := summary(lm(factor.value ~ cov.value))$coefficients[2, 4],
+        by = .(factor, known.cov, method)]
+factors[, z_score := beta / beta_se]
+
+res <- unique(factors[, .(factor, ve, known.cov, pvalue, r2, beta, beta_se, z_score, method)])
+res[, factor := factor(factor, levels = c(paste0('f', 1:50), paste0('PC', 1:50)))]
+res[, padj := p.adjust(pvalue, method = 'bonferroni'), by = .(known.cov, method)]
+res[, top := rank(pvalue) <= 10, by = c('known.cov', 'method')]
+res[, factor_num := str_extract(factor, '[0-9]+') |> as.numeric() |> as.factor()]
+```
+
+
+### Visualization
+
+##### Top Factors by Covariate
+
+The visualization step creates a comprehensive plot comparing how factors from each method associate with key covariates. We focus on six important variables representing both technical (pmi, batch) and biological (AD_status, age, sex) sources of variation. The plot displays absolute z-scores for the top 10 most significant factors/PCs for each covariate, allowing direct comparison between gEBMF and PCA. A reference line at z=3 indicates a rough significance threshold. 
+
+```{r visualization, fig.width=10, fig.height=7, eval=FALSE}
+covs_to_shows <- c('pmi', 'batch', 'AD_status', 'apoe4_career', 'age_death_num', 'msex')
+
+ggplot(res[top & known.cov %in% setdiff(covs_to_shows, 'apoe4_career')][
+         , known.cov := factor(known.cov, levels = covs_to_shows)]) +
+  geom_col(aes(x = method, y = abs(z_score), fill = factor_num), position = 'dodge') +
+  theme_bw() + 
+  geom_hline(yintercept = 3, linetype = 'dashed', col = 'red3', linewidth = 0.5) +
+  facet_wrap('known.cov', scales = 'free') +
+  labs(title = 'Top 10 factors associated with known covariates',
+       x = 'Dimensionality Reduction Method',
+       y = 'Absolute Z-score',
+       fill = 'Factor Number') +
+  theme(legend.position = 'bottom')
+
+ggsave(file.path(out, 'factors_known_cov_assoc_ROSMAP.pdf'), width = 8, height = 6)
+```
+
+
+
+### Results Summary
+
+The results summary provides quantitative comparisons between methods. For each covariate, we calculate four key metrics: mean and maximum z-scores (showing overall and peak association strength), mean R-squared (variance explained), and number of significantly associated factors. These metrics collectively indicate how well each dimensionality reduction method captures the various sources of variation.
+
+```{r, eval=FALSE}
+summary_table <- res[top == TRUE, .(
+  Mean_Z = mean(abs(z_score)),
+  Max_Z = max(abs(z_score)),
+  Mean_R2 = mean(r2),
+  N_Sig = sum(padj < 0.05)
+), by = .(method, known.cov)]
+
+kable(summary_table, caption = "Summary of Factor-Covariate Associations")
+```
+
+The summary table enables quick identification of which method performs better for different covariate types (technical vs. biological) and which covariates are most strongly reflected in the reduced-dimensional representations. 
 
