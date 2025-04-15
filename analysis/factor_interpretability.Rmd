@@ -93,7 +93,7 @@ mtdf[, AD_status := sapply(cogdx, function(x) {
 The factor loadings (matrix F) from gEBMF analysis are extracted, which represent the weights of each factor across samples. We focus on the first 50 factors, which typically capture the majority of meaningful variation.
 
 ```{r, eval=FALSE}
-fl <- readRDS('../fungen-xqtl-analysis/analysis/TCW_BU/ROSMAP/mqtl/outputs/01-ROSMAP_methylation_data_preprocessing/flashier_opti_factors.rds')
+fl <- readRDS('ROSMAP/mqtl/outputs/01-ROSMAP_methylation_data_preprocessing/flashier_opti_factors.rds')
 plot(fl, main = "gEBMF Factor Analysis Results")
 ldf <- ldf(fl, type = 'f')
 fs_dt <- data.table(ldf$F[, 1:50], keep.rownames = 'specimenID_corr')
@@ -119,7 +119,7 @@ The omics data preparation involves several quality control steps, methylation a
 - The remaining beta values are converted to a matrix format and transformed using the probit function (qnorm), which approximates a normal distribution better suited for linear analyses. 
 
 ```{r, eval=FALSE}
-pheno <- read_delim('../fungen-xqtl-analysis/analysis/TCW_BU/ROSMAP/mqtl/outputs/01-ROSMAP_methylation_data_preprocessing/ROSMAP_assay_methylationArray_metadata.sesame.beta.bed.gz', 
+pheno <- read_delim('ROSMAP/mqtl/outputs/01-ROSMAP_methylation_data_preprocessing/ROSMAP_assay_methylationArray_metadata.sesame.beta.bed.gz', 
                    delim = '\t')
 pheno <- pheno[rowMeans(is.na(pheno[, 5:ncol(pheno)])) <= 0.5, ]
 pheno <- pheno[pheno$`#chr` != 'chrY', ]
